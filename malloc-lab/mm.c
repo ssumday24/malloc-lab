@@ -12,11 +12,11 @@
 
 team_t team = {
     /* Team name */
-    "ateam",
+    " Jungle",
     /* First member's full name */
-    "JongHo Lee",
+    " JongHo Lee",
     /* First member's email address */
-    "bovik@cs.cmu.edu",
+    "zx546800@",
     /* Second member's full name (leave blank if none) */
     "",
     /* Second member's email address (leave blank if none) */
@@ -59,13 +59,13 @@ team_t team = {
 
 #define PREV_BLKP(bp)   ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 //////////////////////////////////////////////////////
-static *heap_listp; // static 전역변수 : heap_listp 
+static char *heap_listp; // static 전역변수 : heap_listp 
 
 static void *find_fit(size_t asize);
 static void place(void* bp, size_t asize);
 
 //단편화 방지하기 위해 free 블록들끼리 병합
-static void *coalesce(bp)
+static void *coalesce(void *bp)
 {
     //이전 블록에 접근할땐 footer 에 접근하는게 효율적
     //마지막 1비트만 가져와서 할당비트 확인
@@ -92,7 +92,7 @@ static void *coalesce(bp)
     // 이전 + 현재 병합
     // 이전 블록의 header , 현재 블록의 footer만 수정
     else if (!prev_alloc & next_alloc){
-        size += GET_SIZE(FTRP(PREV_BLKP(bp))); //이전 블록크기만큼 증가
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))); //이전 블록크기만큼 증가
         PUT(FTRP(bp),PACK(size,0)); //헤더 업데이트
         PUT(HDRP(PREV_BLKP(bp)),PACK(size,0)); //푸터 업데이트
         bp = PREV_BLKP(bp); //시작 포인터 이전블록으로 변경
@@ -102,7 +102,7 @@ static void *coalesce(bp)
     // 셋다 병합
     // 이전의 header, 다음의 footer만 수정
     else{
-        size += GET_SIZE(FTRP(PREV_BLKP(bp))) +
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) +
                 GET_SIZE(FTRP(NEXT_BLKP(bp)));
 
         PUT(HDRP(PREV_BLKP(bp)),PACK(size,0));
@@ -144,7 +144,7 @@ static void *extend_heap(size_t words)
 int mm_init(void)
 {
     //예외처리 
-    if ((heap_listp = mem_sbrk(4 * WSIZE)) ==(void *) -1 )
+    if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
         return -1;
 
     PUT(heap_listp,0); // unused padding
@@ -268,18 +268,20 @@ static void place(void* bp, size_t asize)
     if ((cur_size - asize) >= (2 * DSIZE))
     {
         PUT(HDRP(bp),PACK(asize,1)); //헤더에 할당표시
-        PUT(HDRP(bp),PACK(asize,1)); //푸터에 할당표시
+        PUT(FTRP(bp),PACK(asize,1)); //푸터에 할당표시
 
         // 나머지 부분을 free 블록으로 만들기
-        bp = NEXT_BLKP(bp);
-        PUT(HDRP(bp),PACK(cur_size - asize, 0)); // free 헤더
-        PUT(FTRP(bp),PACK(cur_size - asize, 0)); // free 푸터
+        char *next_bp = NEXT_BLKP(bp);
+        PUT(HDRP(next_bp),PACK(cur_size - asize, 0)); // free 헤더
+        PUT(FTRP(next_bp),PACK(cur_size - asize, 0)); // free 푸터
 
     }
 
     else //분할X ,전체블록 Cur_size 할당 
     { 
         PUT(HDRP(bp),PACK(cur_size,1)); //헤더에 할당표시
-        PUT(HDRP(bp),PACK(cur_size,1)); //푸터에 할당표시
+        PUT(FTRP(bp),PACK(cur_size,1)); //푸터에 할당표시
     }
+
+
 }
