@@ -59,7 +59,10 @@ team_t team = {
 
 #define PREV_BLKP(bp)   ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 //////////////////////////////////////////////////////
-static *heap_listp; // static : heap_listp 
+static *heap_listp; // static 전역변수 : heap_listp 
+
+static void *find_fit(size_t asize);
+static void place(void* bp, size_t asize);
 
 //단편화 방지하기 위해 free 블록들끼리 병합
 static void *coalesce(bp)
@@ -155,19 +158,43 @@ int mm_init(void)
     return 0;
 }
 
-// 항상 블록의 크기를 alignment 배수의 크기로 할당하기 !
+// 항상 블록의 크기를 alignment 배수 (여기선 8) 의 크기로 할당하기 !
 void *mm_malloc(size_t size)
 {
-    int newsize = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(newsize);
-    if (p == (void *)-1)
-        return NULL;
+    size_t asize; // 조정 된 블록사이즈 : (payload + header/footer 포함)
+    size_t extendsize; // heap 을 확장할 크기
+    char* bp;
+
+    if (size ==0)
+        return NULL; //예외처리
+
+    if (size <=DSIZE) //최소 블록 크기 보장(header+footer+최소payload)
+        asize = 2 * DSIZE;
+    
+        
     else
-    {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
+        //DSIZE 초과면 8의 배수로 올림       
+        asize = DSIZE * ( ( size + (DSIZE) + (DSIZE - 1) ) / DSIZE);
+    
+    // 가용 리스트에서 asize를 만족하는 free 블록 찾기
+    // 찾았으면 place() 로 블록 할당
+    if ((bp = find_fit(asize)) != NULL){
+        place(bp,asize);
+        return bp;
     }
-}
+
+    // 찾지 못했으면 heap 확장
+    extendsize = MAX(asize,CHUNKSIZE);
+
+    // 한번에 `최소` CHUNK SIZE 이상 확장 - extend는 무조건 실행됨
+    if ((bp = extend_heap(extendsize/WSIZE)) == NULL )
+        return NULL;
+    
+    //확장한 블록에 배정
+    place(bp,asize);
+    return bp;
+    
+}   
 
 // 헤더와 푸터만 변경하고, 내용을 변경하지는 않음
 void mm_free(void *bp)
@@ -197,4 +224,62 @@ void *mm_realloc(void *ptr, size_t size)
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;
+}
+
+//가용 리스트에서 Fist Fit 검색 수행
+//리스트를 처음부터 검색해서, '크기가 맞는 첫번째 Free블록' 선택
+static void *find_fit(size_t asize)
+{
+    // asize를 만족하는 free 블록 찾기
+    // heap_listp 는 unused_padding 부터 시작하므로, 
+    // 프롤로그의 footer 부터 시작하도록 바꿔주기
+    char *bp = heap_listp + 2 * WSIZE; 
+
+
+    /*
+    GET_SIZE(HDRP(bp)) 로 접근후, 다음블록으로이동
+    bp = next_blkp(bp)  
+    종료조건 : 에필로그 블록 (size=0, alloc=0)
+    */
+    while (GET_SIZE(HDRP(bp)) != 0 )
+    {
+        // 블록의 크기가 충분하고 , Alloc비트 == 0 이라면
+        if ( asize <= GET_SIZE(HDRP(bp)) &&
+              !GET_ALLOC(HDRP(bp))
+            )
+            return bp;
+        else
+            bp = NEXT_BLKP(bp); //다음블록 이동
+    }
+
+    //에러 검출부분
+    fprintf(stderr, "[find_fit] No fit found for size: %zu bytes\n", asize);
+    
+    return NULL; //못찾았으면 NULL 반환
+}
+
+// 확장한 블록에 배정
+static void place(void* bp, size_t asize)
+{
+    size_t cur_size = GET_SIZE(HDRP(bp)); //현재블록 크기
+
+    // 분할이 가능한지 확인 (최소 블록 크기 이상 남을때)
+    // asize 와 (cur_size - asize) 로 분할
+    if ((cur_size - asize) >= (2 * DSIZE))
+    {
+        PUT(HDRP(bp),PACK(asize,1)); //헤더에 할당표시
+        PUT(HDRP(bp),PACK(asize,1)); //푸터에 할당표시
+
+        // 나머지 부분을 free 블록으로 만들기
+        bp = NEXT_BLKP(bp);
+        PUT(HDRP(bp),PACK(cur_size - asize, 0)); // free 헤더
+        PUT(FTRP(bp),PACK(cur_size - asize, 0)); // free 푸터
+
+    }
+
+    else //분할X ,전체블록 Cur_size 할당 
+    { 
+        PUT(HDRP(bp),PACK(cur_size,1)); //헤더에 할당표시
+        PUT(HDRP(bp),PACK(cur_size,1)); //푸터에 할당표시
+    }
 }
