@@ -249,7 +249,7 @@ static void *find_fit(size_t asize)
 {
     // asize를 만족하는 free 블록 찾기
     // heap_listp 는 프롤로그의 footer 부터 시작
-    
+    // 2025.07.01
     #ifdef Best_fit
     char * bp = heap_listp; 
     char * best_select = NULL; //선택할 블록
