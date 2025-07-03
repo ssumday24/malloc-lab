@@ -66,10 +66,10 @@ static void place(void* bp, size_t asize);
 static void *coalesce(void *bp);
 static void *extend_heap(size_t words);
 
-//#define Next_fit // Next_fit 선언 -> First,Best 진행시 주석처리
-static char *rover;  // Next_fit을 위한 전역 포인터변수
+#define Next_fit // Next_fit 선언 -> First,Best 진행시 주석처리
+static char *check;  // Next_fit을 위한 전역 포인터변수
 
-#define Best_fit  //Best_fit 선언
+//#define Best_fit  //Best_fit 선언
 
 //초기화 - mem_sbrk 등은 memlib.c에 정의
 int mm_init(void)
@@ -85,7 +85,7 @@ int mm_init(void)
     
     // 논리흐름상, heap_list 는 프롤로그 footer 부터 시작
     heap_listp += (2*WSIZE);
-    rover = heap_listp;
+    check = heap_listp;
 
     //힙 확장이 실패했을 때 예외처리
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
@@ -127,8 +127,8 @@ void mm_free(void *bp)
 
     #ifdef Next_fit
     // 만약 rover가 지금 free하는 블록을 가리키고 있으면, rover를 heap_listp로 리셋
-    if (rover == bp)
-        rover = heap_listp;
+    if (check == bp)
+        check = heap_listp;
     #endif
 
     coalesce(bp); //병합
@@ -247,9 +247,8 @@ void *mm_realloc(void *ptr, size_t size)
 //Best_fit : 리스트 전체 탐색후 `크기가 맞는` `가장 작은 블록` 선택
 static void *find_fit(size_t asize)
 {
-    // asize를 만족하는 free 블록 찾기
+    // asize를 만족하는 free 블록 찾기 - Malloc 에서만 호출
     // heap_listp 는 프롤로그의 footer 부터 시작
-    // 2025.07.01
     #ifdef Best_fit
     char * bp = heap_listp; 
     char * best_select = NULL; //선택할 블록
@@ -277,26 +276,24 @@ static void *find_fit(size_t asize)
 
     return best_select; // 최소블록 주소 반환
 
-
-
     #elif defined (Next_fit) 
-    char *start = rover; //start에 값이 바뀌기전 rover 저장
+    char *start = check; //start에 값이 바뀌기전 체크포인트 저장
 
-    // 1. rover ~ 에필로그까지 탐색
-    while(GET_SIZE(HDRP(rover)) != 0) {
-        if(GET_ALLOC(HDRP(rover)) == 0 && asize <= GET_SIZE(HDRP(rover)))
-            return rover;
+    // 1. <체크포인트 ~ 에필로그> 탐색
+    while(GET_SIZE(HDRP(check)) != 0) {
+        if(GET_ALLOC(HDRP(check)) == 0 && asize <= GET_SIZE(HDRP(check)))
+            return check;
         else
-            rover = NEXT_BLKP(rover);
+            check = NEXT_BLKP(check); // free에서 예외처리 안해주면 Next_fit에서 segfault 발생가능
     }
 
-    // 2. heap_listp ~ start 이전까지 탐색
-    rover = heap_listp;
-    while (rover < start) {
-        if(GET_ALLOC(HDRP(rover)) == 0 && asize <= GET_SIZE(HDRP(rover)))
-            return rover;
+    // 2. <프롤로그 ~ 체크포인트 이전> 탐색
+    check = heap_listp;
+    while (check < start) {
+        if(GET_ALLOC(HDRP(check)) == 0 && asize <= GET_SIZE(HDRP(check)))
+            return check;
         else
-            rover = NEXT_BLKP(rover);
+            check = NEXT_BLKP(check);
     }
 
     #else //First_fit : Next,Best 둘다 주석처리 
